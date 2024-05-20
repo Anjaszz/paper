@@ -1,46 +1,156 @@
 <script>
     import { onMount } from "svelte";
+    import {
+        parse,
+        HtmlGenerator,
+    // @ts-ignore
+    } from "https://cdn.jsdelivr.net/npm/latex.js/dist/latex.mjs";
     import Highlight from "svelte-highlight";
     import latex from "svelte-highlight/languages/latex";
+   const PUBLIC_API_URL = "https://api.gemini.com/v1beta/models/gemini-pro:generateContent"
 
-    const API_KEY = "AIzaSyA9dlvNXyhzj71YYrq7j3JSbR_K3pEOSWk";
-    const BASE_URL = "https://api.gemini.com";
-    const ENDPOINT = "/v1beta/models/gemini-pro:generateContent";
-
+    const API_URL = PUBLIC_API_URL;
     let message = "";
     let result = "";
     let style = "APA Style";
     let loading = false;
-
+    /**
+     * @param {string} prompt
+     */
     async function* streamChatCompletions(prompt) {
-        const url = `${BASE_URL}${ENDPOINT}/request-message`;
-        const data = { message: prompt, style: style };
-
+        const url = `${API_URL}/request-message/`;
+        var data = { message: prompt, style: style };
+        //fetch stream response
         const response = await fetch(url, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "X-GEMINI-APIKEY": API_KEY
             },
             body: JSON.stringify(data),
         });
 
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        if(response.body === null) {
+            throw new Error("Response body is null");
         }
 
         const reader = response.body.getReader();
-        let decoder = new TextDecoder();
         while (true) {
             const { done, value } = await reader.read();
             if (done) {
                 break;
             }
-            yield decoder.decode(value);
+            yield new TextDecoder().decode(value);
         }
     }
 
-    function getResponse() {
+    /**
+     * @param {string} text
+     */
+    function cleanLatex(text) {
+        let textTmp = text;
+        //remove \usepackage{...}
+        textTmp = textTmp.replaceAll(/\\usepackage{.*?}/g, "");
+        textTmp = textTmp.replaceAll(/\\usepackage[.*?]{.*?}/g, "");
+
+        textTmp = textTmp.replaceAll(/\\geometry{.*?}/g, "");
+
+        //replace & with /& but not in \&
+        textTmp = textTmp.replaceAll(" &", " \\&");
+        
+        //replace number with % with \\%, example 100% -> 100\\%, using regex
+        textTmp = textTmp.replaceAll(/(\d+)%/g, "$1\\%");
+
+        textTmp = textTmp.replaceAll("_", " \\_");
+        
+
+        textTmp = textTmp.replaceAll(" [", " {[");
+        textTmp = textTmp.replaceAll("] ", "]} ");
+
+        //change \begin{thebibliography} and \end{thebibliography} to \begin{itemize} and \end{itemize}
+        if (textTmp.includes("\\begin{thebibliography}")) {
+            //remove {...} after \begin{thebibliography}
+            textTmp = textTmp.replace(/\\begin{thebibliography}{.*?}/g, "");
+            textTmp = textTmp.replaceAll(
+                "\\begin{thebibliography}",
+                "\\begin{itemize}",
+            );
+            textTmp = textTmp.replaceAll(
+                "\\end{thebibliography}",
+                "\\end{itemize}",
+            );
+            //replace \bibitem with \item
+            textTmp = textTmp.replaceAll("\\bibitem", "\\item");
+        }
+
+        //if textTmp contains \url{...}
+        if (textTmp.includes("\\url{")) {
+            //remove \url{...} and replace with ...
+            textTmp = "\\usepackage{hyperref}\n"+textTmp.replaceAll(/\\url{.*?}/g, "...");
+        }
+
+        if (textTmp.includes("\\begin{picture}")) {
+            //remove \url{...} and replace with ...
+            textTmp = "\\usepackage{calc,pict2e,picture}\n"+textTmp.replaceAll(/\\url{.*?}/g, "...");
+        }
+
+        return textTmp;
+    }
+
+    /**
+     * @param {string} text
+     */
+    function refactorLatex(text) {
+        let textTmp = text;
+        //count bracket
+        let countOpen = (textTmp.match(/{/g) || []).length;
+        let countClose = (textTmp.match(/}/g) || []).length;
+        if (countOpen > countClose) {
+            textTmp += "}\n";
+        }
+
+        //count word /begin{...} and add \end{...} with same name
+        let begin = textTmp.match(/\\begin{.*?}/g) || [];
+        let end = textTmp.match(/\\end{.*?}/g) || [];
+        for (let i = 0; i < begin.length; i++) {
+            let name = begin[i].replace("\\begin{", "").replace("}", "");
+            // @ts-ignore
+            if (!end.includes(`\\end{${name}}`)) {
+                textTmp += `\\end{${name}}\n`;
+            }
+        }
+
+        // let countBegin = (textTmp.match(/\\begin/g) || []).length;
+        // let countEnd = (textTmp.match(/\\end/g) || []).length;
+        // if (countBegin > countEnd) {
+        //     textTmp += "\n \\end{document}";
+        // }
+        return textTmp;
+    }
+
+    /**
+     * @param {string} text
+     */
+    function renderLatex(text) {
+        let generator = new HtmlGenerator({ hyphenate: false });
+        let doc = parse(text, {
+            generator: generator,
+        }).htmlDocument();
+        doc.head.appendChild(
+            generator.stylesAndScripts(
+                "https://cdn.jsdelivr.net/npm/latex.js@0.12.4/dist/",
+            ),
+        );
+        /**
+         * @type {HTMLIFrameElement}
+         */
+        // @ts-ignore
+        const resultEl = document.getElementById("result") || {};
+        if (resultEl) {
+            resultEl.srcdoc = doc.documentElement.outerHTML;
+        }
+    }
+
+    async function getResponse() {
         if (loading) {
             return;
         }
@@ -68,107 +178,39 @@
             ];
             message = `topik ${randomTheme[Math.floor(Math.random() * randomTheme.length)]}`;
         }
-
+        
         loading = true;
-        streamChatCompletions(message)
-            .then((stream) => {
-                const reader = stream.getReader();
-                return new ReadableStream({
-                    start(controller) {
-                        function push() {
-                            reader.read().then(({ done, value }) => {
-                                if (done) {
-                                    controller.close();
-                                    return;
-                                }
-                                controller.enqueue(value);
-                                push();
-                            }).catch(error => {
-                                console.error(error);
-                                controller.error(error);
-                            });
-                        }
-                        push();
-                    }
-                });
-            })
-            .then(stream => {
-                return new Response(stream, { headers: { "Content-Type": "text/html" } }).text();
-            })
-            .then((text) => {
-                result += text;
-                renderLatex(result);
-            })
-            .catch((error) => {
-                console.error(error);
-                alert(error);
-            })
-            .finally(() => {
-                loading = false;
-            });
-    }
-
-    function cleanLatex(text) {
-        let textTmp = text;
-        textTmp = textTmp.replaceAll(/\\usepackage{.*?}/g, "");
-        textTmp = textTmp.replaceAll(/\\usepackage[.*?]{.*?}/g, "");
-        textTmp = textTmp.replaceAll(/\\geometry{.*?}/g, "");
-        textTmp = textTmp.replaceAll(" &", " \\&");
-        textTmp = textTmp.replaceAll(/(\d+)%/g, "$1\\%");
-        textTmp = textTmp.replaceAll("_", " \\_");
-        textTmp = textTmp.replaceAll(" [", " {[");
-        textTmp = textTmp.replaceAll("] ", "]} ");
-        if (textTmp.includes("\\begin{thebibliography}")) {
-            textTmp = textTmp.replace(/\\begin{thebibliography}{.*?}/g, "");
-            textTmp = textTmp.replaceAll("\\begin{thebibliography}", "\\begin{itemize}");
-            textTmp = textTmp.replaceAll("\\end{thebibliography}", "\\end{itemize}");
-            textTmp = textTmp.replaceAll("\\bibitem", "\\item");
-        }
-        if (textTmp.includes("\\url{")) {
-            textTmp = "\\usepackage{hyperref}\n" + textTmp.replaceAll(/\\url{.*?}/g, "...");
-        }
-        if (textTmp.includes("\\begin{picture}")) {
-            textTmp = "\\usepackage{calc,pict2e,picture}\n" + textTmp.replaceAll(/\\url{.*?}/g, "...");
-        }
-        return textTmp;
-    }
-
-    function refactorLatex(text) {
-          let textTmp = text;
-        let countOpen = (textTmp.match(/{/g) || []).length;
-        let countClose = (textTmp.match(/}/g) || []).length;
-        if (countOpen > countClose) {
-            textTmp += "}\n";
-        }
-        let begin = textTmp.match(/\\begin{.*?}/g) || [];
-        let end = textTmp.match(/\\end{.*?}/g) || [];
-        for (let i = 0; i < begin.length; i++) {
-            let name = begin[i].replace("\\begin{", "").replace("}", "");
-            if (!end.includes(`\\end{${name}}`)) {
-                textTmp += `\\end{${name}}\n`;
+        try {
+            const stream = streamChatCompletions(message);
+            for await (const chunk of stream) {
+                const ck = chunk.replaceAll("```", "").replaceAll(":FINISH:", "");
+                result += ck;
+                result = cleanLatex(result);
+                try {
+                    const refactorResult = refactorLatex(result);
+                    renderLatex(refactorResult);
+                } catch (error) {
+                    console.log(error);
+                    
+                }
             }
+            try {
+                result = cleanLatex(refactorLatex(result));
+                renderLatex(result);
+            } catch (error) {
+                console.log(error);
+                alert(error);
+            }
+        } catch (error) {
+            console.log(error);
+            alert(error);
         }
-        return textTmp;
+        
+        loading = false;
     }
 
-    function renderLatex(text) {
-         let generator = new HtmlGenerator({ hyphenate: false });
-        let doc = parse(text, {
-            generator: generator,
-        }).htmlDocument();
-        doc.head.appendChild(generator.stylesAndScripts("https://cdn.jsdelivr.net/npm/latex.js@0.12.4/dist/"));
-        const resultEl = document.getElementById("result");
-        if (resultEl) {
-            resultEl.srcdoc = doc.documentElement.outerHTML;
-        }
-    }
-
-    onMount(async () => {
-        // Any initialization code here
-    });
+    onMount(async () => {});
 </script>
-
-<!-- Rest of your HTML remains unchanged -->
 
 <svelte:head>
     <title>Buat karya ilmiah abal-abal</title>
@@ -230,6 +272,11 @@
                     </button>
                 </div>
                 <div class="w-full overflow-auto" style="height: 58vh;">
+                    <!-- <pre class="language-latex">
+                        <code>
+                            {result}
+                        </code>
+                    </pre> -->
                     <Highlight language={latex} code={result} />
                 </div>
             </div>
@@ -247,7 +294,10 @@
                     sandbox="allow-same-origin allow-scripts"
                     frameborder="0"
                 ></iframe>
+                    
                 </div>
+                
+                
             </div>
         </div>
         <p class="text-red-500 font-bold">
