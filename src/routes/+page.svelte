@@ -3,9 +3,9 @@
     import { parse, HtmlGenerator } from "https://cdn.jsdelivr.net/npm/latex.js/dist/latex.mjs";
     import Highlight from "svelte-highlight";
     import latex from "svelte-highlight/languages/latex";
-    const API_KEY = "AIzaSyBP_p2eCFw9mPrrV-hL0s4NpRKzRXIM9U0";
+    const API_KEY = "AIzaSyDO-xUJ-wVvQpCXMFKC0LG8Bn6-dQQGudQ";
 
-    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${API_KEY}`;
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=$API_KEY`;
     let message = "";
     let result = "";
     let style = "APA Style";
