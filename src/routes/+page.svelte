@@ -7,9 +7,9 @@
     } from "https://cdn.jsdelivr.net/npm/latex.js/dist/latex.mjs";
     import Highlight from "svelte-highlight";
     import latex from "svelte-highlight/languages/latex";
-    import { PUBLIC_API_URL } from "$env/static/public";
+    import {https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${AIzaSyBP_p2eCFw9mPrrV-hL0s4NpRKzRXIM9U0} } from "$env/static/public";
 
-    const API_URL = PUBLIC_API_URL;
+    const API_URL = https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${AIzaSyBP_p2eCFw9mPrrV-hL0s4NpRKzRXIM9U0};
     let message = "";
     let result = "";
     let style = "APA Style";
