@@ -1,40 +1,111 @@
 <script>
     import { onMount } from "svelte";
-    import { parse, HtmlGenerator } from "https://cdn.jsdelivr.net/npm/latex.js/dist/latex.mjs";
     import Highlight from "svelte-highlight";
     import latex from "svelte-highlight/languages/latex";
-    const API_KEY = "AIzaSyDO-xUJ-wVvQpCXMFKC0LG8Bn6-dQQGudQ";
 
-    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=$API_KEY`;
+    const API_KEY = "AIzaSyA9dlvNXyhzj71YYrq7j3JSbR_K3pEOSWk";
+    const BASE_URL = "https://api.gemini.com";
+    const ENDPOINT = "/v1beta/models/gemini-pro:generateContent";
+
     let message = "";
     let result = "";
     let style = "APA Style";
     let loading = false;
 
     async function* streamChatCompletions(prompt) {
-        const url = `${API_URL}/request-message/`;
+        const url = `${BASE_URL}${ENDPOINT}/request-message`;
         const data = { message: prompt, style: style };
-        
+
         const response = await fetch(url, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
+                "X-GEMINI-APIKEY": API_KEY
             },
             body: JSON.stringify(data),
         });
 
-        if(response.body === null) {
-            throw new Error("Response body is null");
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
 
         const reader = response.body.getReader();
+        let decoder = new TextDecoder();
         while (true) {
             const { done, value } = await reader.read();
             if (done) {
                 break;
             }
-            yield new TextDecoder().decode(value);
+            yield decoder.decode(value);
         }
+    }
+
+    function getResponse() {
+        if (loading) {
+            return;
+        }
+        result = "";
+
+        if (message === "") {
+            const randomTheme = [
+                "teknologi",
+                "AI",
+                "kesehatan",
+                "pertanian",
+                "perkebunan",
+                "energi",
+                "sosial",
+                "kemiskinan",
+                "pendidikan",
+                "batubara",
+                "lingkungan",
+                "kendaraan listrik",
+                "smartphone",
+                "IoT",
+                "anime",
+                "olahraga",
+                "penipuan",
+            ];
+            message = `topik ${randomTheme[Math.floor(Math.random() * randomTheme.length)]}`;
+        }
+
+        loading = true;
+        streamChatCompletions(message)
+            .then((stream) => {
+                const reader = stream.getReader();
+                return new ReadableStream({
+                    start(controller) {
+                        function push() {
+                            reader.read().then(({ done, value }) => {
+                                if (done) {
+                                    controller.close();
+                                    return;
+                                }
+                                controller.enqueue(value);
+                                push();
+                            }).catch(error => {
+                                console.error(error);
+                                controller.error(error);
+                            });
+                        }
+                        push();
+                    }
+                });
+            })
+            .then(stream => {
+                return new Response(stream, { headers: { "Content-Type": "text/html" } }).text();
+            })
+            .then((text) => {
+                result += text;
+                renderLatex(result);
+            })
+            .catch((error) => {
+                console.error(error);
+                alert(error);
+            })
+            .finally(() => {
+                loading = false;
+            });
     }
 
     function cleanLatex(text) {
@@ -63,7 +134,7 @@
     }
 
     function refactorLatex(text) {
-        let textTmp = text;
+          let textTmp = text;
         let countOpen = (textTmp.match(/{/g) || []).length;
         let countClose = (textTmp.match(/}/g) || []).length;
         if (countOpen > countClose) {
@@ -81,7 +152,7 @@
     }
 
     function renderLatex(text) {
-        let generator = new HtmlGenerator({ hyphenate: false });
+         let generator = new HtmlGenerator({ hyphenate: false });
         let doc = parse(text, {
             generator: generator,
         }).htmlDocument();
@@ -92,66 +163,12 @@
         }
     }
 
-    async function getResponse() {
-        if (loading) {
-            return;
-        }
-        result = "";
-
-        if (message === "") {
-            const randomTheme = [
-                "teknologi",
-                "AI",
-                "kesehatan",
-                "pertanian",
-                "perkebunan",
-                "energi",
-                "sosial",
-                "kemiskinan",
-                "pendidikan",
-                "batubara",
-                "lingkungan",
-                "kendaraan listrik",
-                "smartphone",
-                "IoT",
-                "anime",
-                "olahraga",
-                "penipuan",
-            ];
-            message = `topik ${randomTheme[Math.floor(Math.random() * randomTheme.length)]}`;
-        }
-        
-        loading = true;
-        try {
-            const stream = streamChatCompletions(message);
-            for await (const chunk of stream) {
-                const ck = chunk.replaceAll("```", "").replaceAll(":FINISH:", "");
-                result += ck;
-                result = cleanLatex(result);
-                try {
-                    const refactorResult = refactorLatex(result);
-                    renderLatex(refactorResult);
-                } catch (error) {
-                    console.log(error);
-                }
-            }
-            try {
-                result = cleanLatex(refactorLatex(result));
-                renderLatex(result);
-            } catch (error) {
-                console.log(error);
-                alert(error);
-            }
-        } catch (error) {
-            console.log(error);
-            alert(error);
-        }
-        
-        loading = false;
-    }
-
-    onMount(async () => {});
+    onMount(async () => {
+        // Any initialization code here
+    });
 </script>
+
+<!-- Rest of your HTML remains unchanged -->
 
 <svelte:head>
     <title>Buat karya ilmiah abal-abal</title>
