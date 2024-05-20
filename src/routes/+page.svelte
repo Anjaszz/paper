@@ -7,7 +7,7 @@
     } from "https://cdn.jsdelivr.net/npm/latex.js/dist/latex.mjs";
     import Highlight from "svelte-highlight";
     import latex from "svelte-highlight/languages/latex";
-   const PUBLIC_API_URL = "https://api.gemini.com/v1beta/models/gemini-pro:generateContent"
+   const PUBLIC_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
 
     const API_URL = PUBLIC_API_URL;
     let message = "";
