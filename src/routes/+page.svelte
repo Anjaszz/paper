@@ -1,26 +1,20 @@
 <script>
     import { onMount } from "svelte";
-    import {
-        parse,
-        HtmlGenerator,
-    // @ts-ignore
-    } from "https://cdn.jsdelivr.net/npm/latex.js/dist/latex.mjs";
+    import { parse, HtmlGenerator } from "https://cdn.jsdelivr.net/npm/latex.js/dist/latex.mjs";
     import Highlight from "svelte-highlight";
     import latex from "svelte-highlight/languages/latex";
-    import {https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${AIzaSyBP_p2eCFw9mPrrV-hL0s4NpRKzRXIM9U0} } from "$env/static/public";
+    const API_KEY = "AIzaSyBP_p2eCFw9mPrrV-hL0s4NpRKzRXIM9U0";
 
-    const API_URL = https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${AIzaSyBP_p2eCFw9mPrrV-hL0s4NpRKzRXIM9U0};
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key=${API_KEY}`;
     let message = "";
     let result = "";
     let style = "APA Style";
     let loading = false;
-    /**
-     * @param {string} prompt
-     */
+
     async function* streamChatCompletions(prompt) {
         const url = `${API_URL}/request-message/`;
-        var data = { message: prompt, style: style };
-        //fetch stream response
+        const data = { message: prompt, style: style };
+        
         const response = await fetch(url, {
             method: "POST",
             headers: {
@@ -43,108 +37,56 @@
         }
     }
 
-    /**
-     * @param {string} text
-     */
     function cleanLatex(text) {
         let textTmp = text;
-        //remove \usepackage{...}
         textTmp = textTmp.replaceAll(/\\usepackage{.*?}/g, "");
         textTmp = textTmp.replaceAll(/\\usepackage[.*?]{.*?}/g, "");
-
         textTmp = textTmp.replaceAll(/\\geometry{.*?}/g, "");
-
-        //replace & with /& but not in \&
         textTmp = textTmp.replaceAll(" &", " \\&");
-        
-        //replace number with % with \\%, example 100% -> 100\\%, using regex
         textTmp = textTmp.replaceAll(/(\d+)%/g, "$1\\%");
-
         textTmp = textTmp.replaceAll("_", " \\_");
-        
-
         textTmp = textTmp.replaceAll(" [", " {[");
         textTmp = textTmp.replaceAll("] ", "]} ");
-
-        //change \begin{thebibliography} and \end{thebibliography} to \begin{itemize} and \end{itemize}
         if (textTmp.includes("\\begin{thebibliography}")) {
-            //remove {...} after \begin{thebibliography}
             textTmp = textTmp.replace(/\\begin{thebibliography}{.*?}/g, "");
-            textTmp = textTmp.replaceAll(
-                "\\begin{thebibliography}",
-                "\\begin{itemize}",
-            );
-            textTmp = textTmp.replaceAll(
-                "\\end{thebibliography}",
-                "\\end{itemize}",
-            );
-            //replace \bibitem with \item
+            textTmp = textTmp.replaceAll("\\begin{thebibliography}", "\\begin{itemize}");
+            textTmp = textTmp.replaceAll("\\end{thebibliography}", "\\end{itemize}");
             textTmp = textTmp.replaceAll("\\bibitem", "\\item");
         }
-
-        //if textTmp contains \url{...}
         if (textTmp.includes("\\url{")) {
-            //remove \url{...} and replace with ...
-            textTmp = "\\usepackage{hyperref}\n"+textTmp.replaceAll(/\\url{.*?}/g, "...");
+            textTmp = "\\usepackage{hyperref}\n" + textTmp.replaceAll(/\\url{.*?}/g, "...");
         }
-
         if (textTmp.includes("\\begin{picture}")) {
-            //remove \url{...} and replace with ...
-            textTmp = "\\usepackage{calc,pict2e,picture}\n"+textTmp.replaceAll(/\\url{.*?}/g, "...");
+            textTmp = "\\usepackage{calc,pict2e,picture}\n" + textTmp.replaceAll(/\\url{.*?}/g, "...");
         }
-
         return textTmp;
     }
 
-    /**
-     * @param {string} text
-     */
     function refactorLatex(text) {
         let textTmp = text;
-        //count bracket
         let countOpen = (textTmp.match(/{/g) || []).length;
         let countClose = (textTmp.match(/}/g) || []).length;
         if (countOpen > countClose) {
             textTmp += "}\n";
         }
-
-        //count word /begin{...} and add \end{...} with same name
         let begin = textTmp.match(/\\begin{.*?}/g) || [];
         let end = textTmp.match(/\\end{.*?}/g) || [];
         for (let i = 0; i < begin.length; i++) {
             let name = begin[i].replace("\\begin{", "").replace("}", "");
-            // @ts-ignore
             if (!end.includes(`\\end{${name}}`)) {
                 textTmp += `\\end{${name}}\n`;
             }
         }
-
-        // let countBegin = (textTmp.match(/\\begin/g) || []).length;
-        // let countEnd = (textTmp.match(/\\end/g) || []).length;
-        // if (countBegin > countEnd) {
-        //     textTmp += "\n \\end{document}";
-        // }
         return textTmp;
     }
 
-    /**
-     * @param {string} text
-     */
     function renderLatex(text) {
         let generator = new HtmlGenerator({ hyphenate: false });
         let doc = parse(text, {
             generator: generator,
         }).htmlDocument();
-        doc.head.appendChild(
-            generator.stylesAndScripts(
-                "https://cdn.jsdelivr.net/npm/latex.js@0.12.4/dist/",
-            ),
-        );
-        /**
-         * @type {HTMLIFrameElement}
-         */
-        // @ts-ignore
-        const resultEl = document.getElementById("result") || {};
+        doc.head.appendChild(generator.stylesAndScripts("https://cdn.jsdelivr.net/npm/latex.js@0.12.4/dist/"));
+        const resultEl = document.getElementById("result");
         if (resultEl) {
             resultEl.srcdoc = doc.documentElement.outerHTML;
         }
@@ -191,7 +133,6 @@
                     renderLatex(refactorResult);
                 } catch (error) {
                     console.log(error);
-                    
                 }
             }
             try {
@@ -272,11 +213,6 @@
                     </button>
                 </div>
                 <div class="w-full overflow-auto" style="height: 58vh;">
-                    <!-- <pre class="language-latex">
-                        <code>
-                            {result}
-                        </code>
-                    </pre> -->
                     <Highlight language={latex} code={result} />
                 </div>
             </div>
@@ -294,10 +230,7 @@
                     sandbox="allow-same-origin allow-scripts"
                     frameborder="0"
                 ></iframe>
-                    
                 </div>
-                
-                
             </div>
         </div>
         <p class="text-red-500 font-bold">
